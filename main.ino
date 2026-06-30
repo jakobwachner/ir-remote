@@ -1,132 +1,70 @@
-#include <WiFi.h>
-#include <WebServer.h>
+#include "web.h"
 
-const char* ssid = "Einfache-Kiste";
-const char* password = "Familiewachner3!";
-
-const int IR_LED_PIN = 13;
-const int IR_RECEIVER_PIN = 14;
+const char* ssid = "wlan";
+const char* password = "admin";
 
 WebServer server(80);
 
-bool ledState = false;
-int lastReceiverState = HIGH;
+#define RECV_PIN 14
+#define SEND_PIN 13
 
-const char INDEX_HTML[] = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>ESP32 IR Test</title>
-</head>
+IRrecv irrecv(RECV_PIN);
+IRsend irsend(SEND_PIN);
 
-<body style="font-family:Arial;text-align:center;margin-top:50px;">
+decode_results results;
 
-<h2>ESP32 IR Hardware Test</h2>
 
-<button style="padding:20px;font-size:20px;" onclick="toggleLed()">
-IR LED umschalten
-</button>
+DynamicJsonDocument lastDoc(2048);
 
-<h3 id="receiverState">Empfänger: --</h3>
+void storeCommand(decode_results* results) {
+  lastDoc.clear();
 
-<script>
+  lastDoc["protocol"] = typeToString(results->decode_type);
+  lastDoc["value"] = (uint32_t)results->value;
+  lastDoc["address"] = results->address;
+  lastDoc["command"] = results->command;
+  lastDoc["bits"] = results->bits;
 
-function toggleLed(){
-    fetch("/toggle");
+  uint16_t copyLen = results->rawlen;
+  if (copyLen > 0) copyLen -= 1;
+  if (copyLen > 100) copyLen = 100;
+  lastDoc["rawLen"] = copyLen;
+
+  JsonArray raw = lastDoc.createNestedArray("raw");
+  for (int i = 0; i < copyLen; i++) {
+    raw.add((uint16_t)(results->rawbuf[i + kStartOffset] * kRawTick));
+  }
 }
-
-function updateReceiver(){
-    fetch("/receiver")
-        .then(r => r.text())
-        .then(text => {
-            document.getElementById("receiverState").innerHTML =
-                "Empfänger: " + text;
-        });
-}
-
-setInterval(updateReceiver, 200);
-
-</script>
-
-</body>
-</html>
-)rawliteral";
-
-
-void handleRoot() {
-    server.send(200, "text/html", INDEX_HTML);
-}
-
-
-void handleToggle() {
-    ledState = !ledState;
-
-    digitalWrite(IR_LED_PIN, ledState);
-
-    Serial.print("IR LED: ");
-    Serial.println(ledState ? "ON" : "OFF");
-
-    server.send(200, "text/plain", ledState ? "ON" : "OFF");
-}
-
-
-void handleReceiver() {
-
-    int state = digitalRead(IR_RECEIVER_PIN);
-
-    if(state == LOW)
-        server.send(200, "text/plain", "IR erkannt");
-    else
-        server.send(200, "text/plain", "Kein Signal");
-}
-
 
 void setup() {
+  Serial.begin(115200);
+  while (!Serial) delay(50);
 
-    Serial.begin(115200);
+  irrecv.enableIRIn();
+  irsend.begin();
 
-    pinMode(IR_LED_PIN, OUTPUT);
-    digitalWrite(IR_LED_PIN, LOW);
+  Serial.println("bereit");
 
-    pinMode(IR_RECEIVER_PIN, INPUT);
+  WiFi.begin(ssid, password);
+  Serial.print("Verbinde mit WLAN");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(250);
+    Serial.print('.');
+  }
+  Serial.println();
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
 
-    Serial.print("Verbinde mit WLAN");
-
-    WiFi.begin(ssid, password);
-
-    while(WiFi.status() != WL_CONNECTED){
-        delay(250);
-        Serial.print(".");
-    }
-
-    Serial.println();
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-
-    server.on("/", handleRoot);
-    server.on("/toggle", handleToggle);
-    server.on("/receiver", handleReceiver);
-
-    server.begin();
-
-    Serial.println("Server gestartet.");
+  setupWeb(server);
+  server.begin();
 }
 
-
 void loop() {
+  if (irrecv.decode(&results)) {
+    storeCommand(&results);
+    irrecv.resume();
+  }
 
-    server.handleClient();
-
-    int state = digitalRead(IR_RECEIVER_PIN);
-
-    if(state != lastReceiverState){
-
-        lastReceiverState = state;
-
-        if(state == LOW)
-            Serial.println("IR erkannt");
-        else
-            Serial.println("Kein IR Signal");
-    }
+  server.handleClient();
+  delay(1);
 }

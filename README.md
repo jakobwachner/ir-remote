@@ -19,5 +19,5 @@ Ziel ist es, Infrarotsignale beliebiger Fernbedienungen aufzunehmen, zu speicher
 
 ## Projektstatus
 
-Ansteuerung LED und kurzer check des Ir  sensors.
+neue design, zeigt letzte signaldaten an und kann ein testsignal senden.
 

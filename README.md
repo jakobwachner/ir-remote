@@ -20,4 +20,5 @@ Ziel ist es, Infrarotsignale beliebiger Fernbedienungen aufzunehmen, zu speicher
 ## Projektstatus
 
 neue design, zeigt letzte signaldaten an und kann ein testsignal senden.
+Auf plattforIO gewewchselt.
 
